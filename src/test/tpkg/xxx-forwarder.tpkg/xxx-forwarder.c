@@ -44,7 +44,17 @@ ipaddr_dict(char *ipstr)
 			return NULL;
 		}
 	}
-	if ((r = getdns_dict_set_bindata(a, "address_data", &addr)))
+	if (*portstr && (r = getdns_dict_set_int(
+	    a, "port", (int32_t)atoi(portstr))))
+		fprintf(stderr, "Could not set port: %s\n",
+		    getdns_get_errorstr_by_id(r));
+
+	else if (*scope_id_str && (r = getdns_dict_util_set_string(
+	    a, "scope_id", scope_id_str)))
+		fprintf(stderr, "Could not set scope_id: %s\n",
+		    getdns_get_errorstr_by_id(r));
+
+	else if ((r = getdns_dict_set_bindata(a, "address_data", &addr)))
 		fprintf(stderr, "Could not set address_data: %s\n",
 		    getdns_get_errorstr_by_id(r));
 	else
