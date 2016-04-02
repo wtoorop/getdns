@@ -172,35 +172,54 @@ int main(int argc, char **argv)
 		r = GETDNS_RETURN_GENERIC_ERROR;
 		perror("listen");
 	}
-	while (r == GETDNS_RETURN_GOOD) {
+	if (!r) for (;;) {
+		if (dns_msg) {
+			getdns_dict_destroy(dns_msg);
+			dns_msg = NULL;
+		}
+		if (qname_str) {
+			free(qname_str);
+			qname_str = NULL;
+		}
+		if (response) {
+			getdns_dict_destroy(response);
+			response = NULL;
+		}
 		addrlen = sizeof(remote_in);
 		if ((msg_len = recvfrom(s, buf, sizeof(buf), 0,
 		    (struct sockaddr *)&remote_in, &addrlen)) == -1) {
 			r = GETDNS_RETURN_GENERIC_ERROR;
 			perror("recvfrom");
-			break;
 		}
-		if ((r = getdns_wire2msg_dict(buf, msg_len, &dns_msg)))
+		if ((r = getdns_wire2msg_dict(buf, msg_len, &dns_msg))) {
 			fprintf(stderr, "Error converting dns msg: %s\n",
 			    getdns_get_errorstr_by_id(r));
+			continue;
 
-		else if ((r = getdns_dict_get_bindata(dns_msg,
-		    "/question/qname", &qname)))
+		}
+		if ((r = getdns_dict_get_bindata(dns_msg,
+		    "/question/qname", &qname))) {
 			fprintf(stderr, "Could not get qname: %s\n",
 			    getdns_get_errorstr_by_id(r));
-
-		else if ((r=getdns_convert_dns_name_to_fqdn(qname,&qname_str)))
+			continue;
+		}
+		if ((r=getdns_convert_dns_name_to_fqdn(qname,&qname_str))) {
 			fprintf(stderr, "Could not convert qname: %s\n",
 			    getdns_get_errorstr_by_id(r));
-
-		else if ((r = getdns_dict_get_int(dns_msg,
-		    "/question/qtype", &qtype)))
+			continue;
+		}
+		if ((r = getdns_dict_get_int(dns_msg,
+		    "/question/qtype", &qtype))) {
 			fprintf(stderr, "Could get qtype: %s\n",
 			    getdns_get_errorstr_by_id(r));
-
-		else if ((r = getdns_dict_get_int(dns_msg,"/header/id",&qid)))
+			continue;
+		}
+		if ((r = getdns_dict_get_int(dns_msg,"/header/id",&qid)))
 			fprintf(stderr, "Could get qid: %s\n",
 			    getdns_get_errorstr_by_id(r));
+		getdns_dict_destroy(dns_msg);
+		dns_msg = NULL;
+		if (r) continue;
 
 		/*
 		fprintf(stderr, "Received packet len: %zd, from %d == %d\n",
@@ -211,34 +230,31 @@ int main(int argc, char **argv)
 		    inet_ntop(AF_INET, (void *)&((struct sockaddr_in *)&remote_in)->sin_addr, str_buf, (socklen_t)sizeof(str_buf)));
 		*/
 
-		getdns_dict_destroy(dns_msg);
-		dns_msg = NULL;
-		if (r) break;
 		if ((r = getdns_general_sync(ctxt, qname_str, qtype, NULL,
 		    &response)))
 			fprintf(stderr, "Could get forward query: %s\n",
 			    getdns_get_errorstr_by_id(r));
+
 		free(qname_str);
 		qname_str = NULL;
-		if (r) break;
-		else if ((r = getdns_dict_set_int(response,
+		if (r) continue;
+		if ((r = getdns_dict_set_int(response,
 		    "/replies_tree/0/header/id", qid))) {
 			fprintf(stderr, "Could not set qid: %s\n",
 			    getdns_get_errorstr_by_id(r));
-			break;
+			continue;
 		}
 		msg_len = sizeof(buf);
-		if ((r = getdns_msg_dict2wire_buf(response,buf,&msg_len)))
+		if ((r = getdns_msg_dict2wire_buf(response,buf,&msg_len))) {
 			fprintf(stderr, "Could not convert reply: %s\n",
 			    getdns_get_errorstr_by_id(r));
-
+			continue;
+		}
 		if (!r && sendto(s,buf,msg_len,0,(struct sockaddr *)&remote_in,
 		    addrlen) == -1) {
 			r = GETDNS_RETURN_GENERIC_ERROR;
 			perror("sendto");
 		}
-		getdns_dict_destroy(response);
-		response = NULL;
 	}
 	free(qname_str);
 	getdns_dict_destroy(dns_msg);
