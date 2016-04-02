@@ -80,7 +80,7 @@ int main(int argc, char **argv)
 	socklen_t addrlen;
 	ssize_t msg_len;
 	getdns_dict *dns_msg;
-	int s;
+	int s, t;
 	getdns_bindata *qname;
 	char *qname_str = NULL;
 	uint32_t qtype, qid;
@@ -124,7 +124,14 @@ int main(int argc, char **argv)
 		    SOCK_DGRAM, 0)) == -1) {
 
 		r = GETDNS_RETURN_GENERIC_ERROR;
-		perror("Could not create socket");
+		perror("Could not create UDP socket");
+
+	} else if ((t = socket((listen_bin->size == 4 ? AF_INET : AF_INET6),
+		    SOCK_STREAM, 0)) == -1) {
+
+		r = GETDNS_RETURN_GENERIC_ERROR;
+		perror("Could not create TCP socket");
+
 	} else {
 		(void) getdns_dict_get_int(listen_dict, "port", &port);
 		if (listen_bin->size == 4) {
@@ -138,6 +145,11 @@ int main(int argc, char **argv)
 				r = GETDNS_RETURN_GENERIC_ERROR;
 				perror("bind");
 			}
+			if (bind(t, (struct sockaddr *)&listen_in,
+			    sizeof(listen_in)) == -1) {
+				r = GETDNS_RETURN_GENERIC_ERROR;
+				perror("tcp bind");
+			}
 		} else {
 			(void)memset((void *)&listen_in6,0,sizeof(listen_in6));
 			listen_in6.sin6_family = AF_INET;
@@ -149,8 +161,17 @@ int main(int argc, char **argv)
 				r = GETDNS_RETURN_GENERIC_ERROR;
 				perror("bind");
 			}
+			if (bind(t, (struct sockaddr *)&listen_in6,
+			    sizeof(listen_in6)) == -1) {
+				r = GETDNS_RETURN_GENERIC_ERROR;
+				perror("tcp bind");
+			}
 		}
 	};
+	if (!r && listen(t, 16) == -1) {
+		r = GETDNS_RETURN_GENERIC_ERROR;
+		perror("listen");
+	}
 	while (r == GETDNS_RETURN_GOOD) {
 		addrlen = sizeof(remote_in);
 		if ((msg_len = recvfrom(s, buf, sizeof(buf), 0,
