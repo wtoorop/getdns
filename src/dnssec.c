@@ -2776,13 +2776,13 @@ static size_t count_outstanding_requests(chain_head *head)
 
 		count += node->lock;
 
-		if (_getdns_netreq_finished(node->dnskey_req))
+		if (!_getdns_netreq_finished(node->dnskey_req))
 			count++;
 
-		if (_getdns_netreq_finished(node->ds_req))
+		if (!_getdns_netreq_finished(node->ds_req))
 			count++;
 
-		if (_getdns_netreq_finished(node->soa_req))
+		if (!_getdns_netreq_finished(node->soa_req))
 			count++;
 	}
 	return count + count_outstanding_requests(head->next);

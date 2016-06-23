@@ -261,7 +261,7 @@ typedef struct getdns_network_req
 } getdns_network_req;
 
 static inline int _getdns_netreq_finished(getdns_network_req *req)
-{ return req && (req->state & NET_REQ_FINISHED); }
+{ return !req || (req->state & NET_REQ_FINISHED); }
 
 /**
  * dns request - manages a number of network requests and
