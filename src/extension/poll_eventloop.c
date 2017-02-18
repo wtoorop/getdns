@@ -327,6 +327,26 @@ poll_eventloop_run_once(getdns_eventloop *loop, int blocking)
 
 	now = get_now_plus(0);
 
+	for (i = 0, j = 0; i < poll_loop->fd_events_free; i++, j++) {
+		while (poll_loop->fd_events[i].event == NULL) {
+			if (++i == poll_loop->fd_events_free) {
+				poll_loop->fd_events_free = j;
+				break;
+			}
+		}
+		if (j < i) {
+			if (j >= poll_loop->fd_events_free)
+				break;
+			poll_loop->fd_events[j] = poll_loop->fd_events[i];
+			poll_loop->fd_events[i].event = NULL;
+			poll_loop->fd_events[j].event->ev =
+			    (void *) (intptr_t) (j + 1);
+			poll_loop->pfds[j] = poll_loop->pfds[i];
+			poll_loop->pfds[i].fd = -1;
+		}
+		if (poll_loop->fd_events[j].timeout_time < now)
+			poll_timeout_cb(poll_loop->fd_events[j].event);
+	}
 	for (i = 0, j = 0; i < poll_loop->to_events_free; i++, j++) {
 		while (poll_loop->to_events[i].event == NULL) {
 			if (++i == poll_loop->to_events_free) {
@@ -365,7 +385,6 @@ poll_eventloop_run_once(getdns_eventloop *loop, int blocking)
 	}
 	if ((timeout == TIMEOUT_FOREVER) && (poll_loop->fd_events_free == 0))
 		return;
-
 	for (i = 0, j = 0; i < poll_loop->fd_events_free; i++, j++) {
 		while (poll_loop->fd_events[i].event == NULL) {
 			if (++i == poll_loop->fd_events_free) {
@@ -386,7 +405,6 @@ poll_eventloop_run_once(getdns_eventloop *loop, int blocking)
 		if (poll_loop->fd_events[j].timeout_time < timeout)
 			timeout = poll_loop->fd_events[j].timeout_time;
 	}
-
 	if (timeout == TIMEOUT_FOREVER) {
 		poll_timeout = -1;
 
@@ -410,7 +428,6 @@ poll_eventloop_run_once(getdns_eventloop *loop, int blocking)
 		exit(EXIT_FAILURE);
 	}
 	now = get_now_plus(0);
-
 	for (i = 0, j = 0; i < poll_loop->fd_events_free; i++, j++) {
 		while (poll_loop->fd_events[i].event == NULL) {
 			if (++i == poll_loop->fd_events_free) {
@@ -459,7 +476,6 @@ poll_eventloop_run_once(getdns_eventloop *loop, int blocking)
 		if (poll_loop->fd_events[j].timeout_time < now)
 			poll_timeout_cb(poll_loop->fd_events[j].event);
 	}
-
 	for (i = 0, j = 0; i < poll_loop->to_events_free; i++, j++) {
 		while (poll_loop->to_events[i].event == NULL) {
 			if (++i == poll_loop->to_events_free) {

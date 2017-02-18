@@ -1638,6 +1638,46 @@ set_ub_number_opt(struct getdns_context *ctx, char *opt, uint16_t value)
     set_ub_string_opt(ctx, opt, buffer);
 }
 
+#if defined(SCHED_DEBUG) && SCHED_DEBUG
+static void _getdns_sched_debug_dnsreq(_getdns_rbnode_t *node, void *arg)
+{
+	getdns_network_req **netreq_p, *netreq;
+	size_t n;
+	getdns_dns_req *dnsreq = (getdns_dns_req *)node;
+	char str[1024];
+	size_t *i = (size_t *)arg;
+
+	if (i) DEBUG_SCHED("dnsreq(%d:%p)\n", (int)((*i)++), (void *)dnsreq);
+	else   DEBUG_SCHED("dnsreq(%p)\n", (void *)dnsreq);
+	if (gldns_wire2str_dname_buf(
+	    dnsreq->name, dnsreq->name_len, str, sizeof(str)))
+		DEBUG_SCHED("\tname: %s\n", str);
+	else	DEBUG_SCHED("\tname: <nill>\n");
+	DEBUG_SCHED("\tis_sync_request: %d, trans_id: %"PRIu64", chain: %p\n"
+	           , (int)dnsreq->is_sync_request
+		   , dnsreq->trans_id
+		   , (void *)dnsreq->chain);
+	DEBUG_SCHED("\ttimeout_cb: %s, user_callback: %s, internal_cb: %s\n"
+		   , (dnsreq->timeout.timeout_cb ? "set" : "clear")
+		   , (dnsreq->user_callback ? "set" : "clear")
+		   , (dnsreq->internal_cb   ? "set" : "clear")
+		   );
+	DEBUG_SCHED("\tfinished_next: %p\n", (void *)dnsreq->finished_next);
+	n = 0;
+	for (netreq_p = dnsreq->netreqs; (netreq = *netreq_p); netreq_p++) {
+		DEBUG_SCHED("\tnetreq(%d:%p)\n", (int)n++, (void *)netreq);
+		DEBUG_SCHED("\t\trequest_type:  %d, state: %d, unbound_id: %d\n"
+		           , (int)netreq->request_type, netreq->state
+			   , netreq->unbound_id);
+		DEBUG_SCHED("\t\tevent: %p, event->ev: %p\n", (void *)&netreq->event, (void *)netreq->event.ev);
+		DEBUG_SCHED("\t\tread_cb: %s, write_cb: %s, timeout_cb: %s\n"
+		          , (netreq->event.read_cb ? "set" : "clear")
+		          , (netreq->event.write_cb ? "set" : "clear")
+		          , (netreq->event.timeout_cb ? "set" : "clear"));
+	}
+}
+#endif
+
 static void
 getdns_context_request_count_changed(getdns_context *context)
 {
@@ -1651,6 +1691,12 @@ getdns_context_request_count_changed(getdns_context *context)
 		prev_count = context->outbound_requests.count;
 		DEBUG_SCHED("getdns_context_request_count_changed(%d)\n",
 		    (int) context->outbound_requests.count);
+#if defined(SCHED_DEBUG) && SCHED_DEBUG
+		size_t i = 0;
+
+		_getdns_traverse_postorder(&context->outbound_requests,
+			_getdns_sched_debug_dnsreq, &i);
+#endif
 		if (context->outbound_requests.count && ! context->ub_event.ev){
 			DEBUG_SCHED("gc_request_count_changed "
 			    "-> ub schedule(el_ev = %p, el_ev->ev = %p)\n",

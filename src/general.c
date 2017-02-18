@@ -197,8 +197,29 @@ _getdns_check_dns_req_complete(getdns_dns_req *dns_req)
 	            dns_req->dnssec_return_all_statuses
 	           ))
 #endif
-	    )
+	    ) {
+		/* The request has finished, and thus timeout events are
+		 * cleared (at least with stub/udp).  We need to schedule
+		 * a new global timeout for this getdns_dns_req,
+		 * otherwise it can stay lingering in outbound requests, when
+		 * something bad happens to the  auxiliary getdns_dns_reqs
+		 * (to get the validation chain).
+		 */
+#if 0	
+		if (! dns_req->timeout.timeout_cb) {
+			dns_req->timeout.userarg    = dns_req;
+			dns_req->timeout.read_cb    = NULL;
+			dns_req->timeout.write_cb   = NULL;
+			dns_req->timeout.timeout_cb =
+			    (getdns_eventloop_callback)
+			    _getdns_context_request_timed_out;
+			dns_req->timeout.ev         = NULL;
+			(void)dns_req->loop->vmt->schedule(dns_req->loop, -1,
+			    dns_req->context->timeout, &dns_req->timeout);
+		}
+#endif
 		_getdns_get_validation_chain(dns_req);
+	}
 	else
 		_getdns_call_user_callback(
 		    dns_req, _getdns_create_getdns_response(dns_req));
