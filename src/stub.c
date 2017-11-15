@@ -894,7 +894,6 @@ tls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 			    upstream->addr_str);
 		}
 	}
-
 	/* If nothing has failed yet and we had credentials, we have succesfully authenticated*/
 	if (preverify_ok == 0)
 		upstream->tls_auth_state = GETDNS_AUTH_FAILED;
@@ -917,6 +916,15 @@ tls_create_object(getdns_dns_req *dnsreq, int fd, getdns_upstream *upstream)
 	SSL* ssl = SSL_new(context->tls_ctx);
 	if(!ssl) 
 		return NULL;
+
+	if (upstream->tlsa_rrset) {
+		assert(*upstream->tls_auth_name);
+		if (SSL_dane_enable(ssl, upstream->tls_auth_name) <= 0) {
+			DEBUG_STUB("ERROR: could not SSL_dane_enable\n");
+			upstream->tlsa_rrset = NULL;
+		} else
+			SSL_dane_set_flags(ssl, DANE_FLAG_NO_DANE_EE_NAMECHECKS);
+	}
 	/* Connect the SSL object with a file descriptor */
 	if(!SSL_set_fd(ssl,fd)) {
 		SSL_free(ssl);
@@ -979,6 +987,57 @@ tls_create_object(getdns_dns_req *dnsreq, int fd, getdns_upstream *upstream)
 			upstream->tls_fallback_ok = 1;
 		}
 	}
+	DEBUG_STUB("TLSA rrset: %p\n", (void *)upstream->tlsa_rrset);
+	if (dnsreq->netreqs[0]->tls_auth_min == GETDNS_AUTHENTICATION_REQUIRED &&
+	    upstream->tlsa_rrset &&
+	    upstream->tlsa_req->dnssec_status == GETDNS_DNSSEC_BOGUS) {
+		_getdns_upstream_log(upstream, GETDNS_LOG_UPSTREAM_STATS, GETDNS_LOG_ERR, 
+		    "%-40s : ERROR: Cannot use upstream, because TLSA lookup for DANE authentication gave BOGUS.\n",
+		    upstream->addr_str);
+		return NULL;
+
+	}
+	if (dnsreq->netreqs[0]->tls_auth_min == GETDNS_AUTHENTICATION_REQUIRED &&
+	    upstream->tlsa_rrset &&
+	    upstream->tlsa_req->dnssec_status != GETDNS_DNSSEC_SECURE) {
+		_getdns_upstream_log(upstream, GETDNS_LOG_UPSTREAM_STATS, GETDNS_LOG_NOTICE, 
+		    "%-40s : No DANE authentication because TLSA lookup returned insecure answers.\n",
+		    upstream->addr_str);
+
+	} else if (dnsreq->netreqs[0]->tls_auth_min == GETDNS_AUTHENTICATION_REQUIRED &&
+	    upstream->tlsa_rrset) {
+		_getdns_rrtype_iter rr_space, *rr;
+
+		DEBUG_STUB("TLSA rrset DNSSEC status: %d\n",
+		    upstream->tlsa_req->dnssec_status);
+
+		for ( rr = _getdns_rrtype_iter_init(&rr_space, upstream->tlsa_rrset)
+		    ; rr
+		    ; rr = _getdns_rrtype_iter_next(rr)) {
+			_getdns_rdf_iter rdf_spc, *rdf;
+			uint8_t usage, selector, mtype;
+
+			if (!(rdf = _getdns_rdf_iter_init(&rdf_spc, &rr->rr_i))
+			    || (rdf->nxt - rdf->pos) != 1)
+				continue;
+			usage = *rdf->pos;
+			if (!(rdf = _getdns_rdf_iter_next(rdf))
+			    || (rdf->nxt - rdf->pos) != 1)
+				continue;
+			selector = *rdf->pos;
+			if (!(rdf = _getdns_rdf_iter_next(rdf))
+			    || (rdf->nxt - rdf->pos) != 1)
+				continue;
+			mtype = *rdf->pos;
+			if (!(rdf = _getdns_rdf_iter_next(rdf))) continue;
+			DEBUG_STUB("Adding TLSA: %d %d %d [%d]\n", (int)usage,
+			    (int)selector, (int)mtype,
+			    (int)(rdf->nxt - rdf->pos));
+			if (SSL_dane_tlsa_add(ssl, usage, selector, mtype,
+			    (unsigned char *)rdf->pos, rdf->nxt - rdf->pos) < 0)
+				DEBUG_STUB("ERROR: adding TLSA record\n");
+		}
+	}
 	if (upstream->tls_fallback_ok) {
 		SSL_set_cipher_list(ssl, "DEFAULT");
 		DEBUG_STUB("%s %-35s: WARNING: Using Oppotunistic TLS (fallback allowed)!\n",
@@ -986,6 +1045,7 @@ tls_create_object(getdns_dns_req *dnsreq, int fd, getdns_upstream *upstream)
 	} else
 		DEBUG_STUB("%s %-35s: Using Strict TLS \n", STUB_DEBUG_SETUP_TLS, 
 		             __FUNC__);
+
 	SSL_set_verify(ssl, SSL_VERIFY_PEER, tls_verify_callback);
 
 	SSL_set_connect_state(ssl);
@@ -1036,9 +1096,12 @@ tls_do_handshake(getdns_upstream *upstream)
 				upstream->tls_hs_state = GETDNS_HS_WRITE;
 				return STUB_TCP_RETRY;
 			default:
-				DEBUG_STUB("%s %-35s: FD:  %d Handshake failed %d\n", 
+				DEBUG_STUB("%s %-35s: FD:  %d Handshake failed %d, %s\n", 
 				            STUB_DEBUG_SETUP_TLS, __FUNC__, upstream->fd,
-				            want);
+				            want, strerror(errno));
+				fprintf(stderr, "\n\n");
+				ERR_print_errors_fp(stderr);
+				fprintf(stderr, "\n\n");
 				return STUB_SETUP_ERROR;
 	   }
 	}
@@ -1687,6 +1750,15 @@ upstream_write_cb(void *userarg)
 			    cert, &netreq->debug_tls_peer_cert.data);
 			X509_free(cert);
 		}
+		if (netreq->owner->return_call_reporting &&
+		    netreq->upstream->tls_obj &&
+		    netreq->upstream->tlsa_rrset) {
+			netreq->upstream->dane_verify_depth =
+			    SSL_get0_dane_authority(
+			    netreq->upstream->tls_obj,
+			    NULL, NULL);
+		}
+
 		/* Need this because auth status is reset on connection close */
 		netreq->debug_tls_auth_status = netreq->upstream->tls_auth_state;
 		upstream->queries_sent++;
@@ -2139,14 +2211,22 @@ upstream_reschedule_events(getdns_upstream *upstream) {
 		GETDNS_SCHEDULE_EVENT(upstream->loop,
 		    upstream->fd, TIMEOUT_FOREVER, &upstream->event);
 	else {
-		DEBUG_STUB("%s %-35s: FD:  %d Connection idle - timeout is %d\n", 
+		DEBUG_STUB("%s %-35s: FD:  %d Connection idle - timeout is %d (transport: %d)\n", 
 			    STUB_DEBUG_SCHEDULE, __FUNC__, upstream->fd,
-			    (int)upstream->keepalive_timeout);
+			    (int)upstream->keepalive_timeout,
+			    (int)upstream->transport);
 
-		upstream->event.read_cb = upstream_read_cb;
-		upstream->event.timeout_cb = upstream_idle_timeout_cb;
-		GETDNS_SCHEDULE_EVENT(upstream->loop, upstream->fd, 
-		    upstream->keepalive_timeout, &upstream->event);
+		/* No idle timeout for meta queries
+		 * TODO TOFIX!!!!
+		 * Test if request is for meta query instead of 
+		 * denying GETDNS_TRANSPORT_TCP.
+		 */
+		if (upstream->transport == GETDNS_TRANSPORT_TLS) {
+			upstream->event.read_cb = upstream_read_cb;
+			upstream->event.timeout_cb = upstream_idle_timeout_cb;
+			GETDNS_SCHEDULE_EVENT(upstream->loop, upstream->fd, 
+			    upstream->keepalive_timeout, &upstream->event);
+		}
 	}
 }
 
@@ -2262,7 +2342,7 @@ static void upstream_name_cb(getdns_dns_req *dnsreq)
 	uint64_t now_ms = 0;
 	getdns_network_req *addr_notify;
 
-	if (! _getdns_netreq_finished(upstream->tlsa_req)) {
+	if (! upstream->tlsa_lookup_finished) {
 		DEBUG_STUB("TLSA lookup not finished yet....\n");
 		return;
 	}
@@ -2311,15 +2391,25 @@ static void upstream_name_cb(getdns_dns_req *dnsreq)
 	}
 }
 
-static void upstream_name_tlsa_cb(getdns_dns_req *dnsreq)
+// static void upstream_name_tlsa_cb(getdns_dns_req *dnsreq)
+static void upstream_name_tlsa_cb(getdns_context *context, 
+    getdns_callback_type_t callback_type, getdns_dict *response,
+    void *userarg, getdns_transaction_t transaction_id)
 {
-	getdns_upstream *upstream = (getdns_upstream *)dnsreq->user_pointer;
+	// getdns_upstream *upstream = (getdns_upstream *)dnsreq->user_pointer;
+	getdns_upstream *upstream = (getdns_upstream *)userarg;
+	(void) context; (void) callback_type; (void) transaction_id;
 
-	DEBUG_STUB("TLSA lookup finished!\n");
+	getdns_dict_destroy(response);
 
 	upstream->tlsa_rrset = _getdns_rrset_answer(
 	    &upstream->tlsa_rrset_spc, upstream->tlsa_req->response
 	                             , upstream->tlsa_req->response_len);
+
+	DEBUG_STUB("TLSA lookup finished! TLSA rrset: %p\n",
+			(void *)upstream->tlsa_rrset);
+	upstream->tlsa_lookup_finished = 1;
+
 	if (upstream->addr_req &&
 	    _getdns_netreq_finished(upstream->addr_req->owner->netreqs[0]) &&
 	    _getdns_netreq_finished(upstream->addr_req->owner->netreqs[1]))
@@ -2356,6 +2446,8 @@ _getdns_submit_stub_request(getdns_network_req *netreq, uint64_t *now_ms)
 		return GETDNS_RETURN_NO_UPSTREAM_AVAILABLE;
 
 	} else if (fd == STUB_RESOLVE_UPSTREAM_NAME) {
+		char tlsa_name[1044];
+
 		assert( netreq->upstream->addr_len == 0);
 		assert(*netreq->upstream->addr_str != 0);
 
@@ -2371,16 +2463,19 @@ _getdns_submit_stub_request(getdns_network_req *netreq, uint64_t *now_ms)
 			/* TODO: retry something else? */
 			return GETDNS_RETURN_MEMORY_ERROR;
 
-		DEBUG_STUB("Scheduling address lookup for: %s\n", netreq->upstream->addr_str);
 		netreq->upstream->addr_req = NULL;
 		netreq->upstream->tlsa_req = NULL;
 		netreq->upstream->tlsa_rrset = NULL;
+		netreq->upstream->tlsa_lookup_finished = 0;
 
+		(void) snprintf(tlsa_name, sizeof(tlsa_name), "_%d._tcp.%s",
+		    netreq->upstream->port, netreq->upstream->addr_str);
+		DEBUG_STUB("Scheduling TLSA lookup for: %s\n", tlsa_name);
 		(void) _getdns_general_loop(sys_ctxt, dnsreq->loop,
-		    netreq->upstream->addr_str, GETDNS_RRTYPE_TLSA,
+		    tlsa_name, GETDNS_RRTYPE_TLSA,
 		    dnssec_ok_checking_disabled_roadblock_avoidance,
 		    netreq->upstream, &netreq->upstream->tlsa_req,
-		    NULL, upstream_name_tlsa_cb);
+		    upstream_name_tlsa_cb, NULL);
 
 		if ((r =_getdns_address_loop(sys_ctxt, dnsreq->loop,
 		    netreq->upstream->addr_str, NULL, netreq->upstream,

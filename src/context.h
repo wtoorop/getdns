@@ -274,6 +274,8 @@ typedef struct getdns_upstream {
 	getdns_network_req *tlsa_req;
 	_getdns_rrset_spc   tlsa_rrset_spc;
 	_getdns_rrset      *tlsa_rrset;
+	int                 dane_verify_depth;
+	int                 tlsa_lookup_finished :1;
 } getdns_upstream;
 
 typedef struct getdns_log_config {

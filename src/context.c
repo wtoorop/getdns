@@ -945,6 +945,7 @@ upstream_init(getdns_upstream *upstream,
 		upstream->addr_len = 0;
 
 	upstream->addr_notify = NULL;
+	upstream->dane_verify_depth = -1;
 
 	/* How is this upstream doing on connections? */
 	upstream->conn_completed = 0;
@@ -3561,6 +3562,9 @@ _getdns_context_prepare_for_resolution(getdns_context *context)
 			context->tls_ctx = SSL_CTX_new(TLSv1_2_client_method());
 #  endif
 			if(context->tls_ctx == NULL)
+				return GETDNS_RETURN_BAD_CONTEXT;
+
+			if (SSL_CTX_dane_enable(context->tls_ctx) <= 0)
 				return GETDNS_RETURN_BAD_CONTEXT;
 
 #  ifdef HAVE_SSL_CTX_SET_MIN_PROTO_VERSION

@@ -922,6 +922,14 @@ _getdns_create_call_reporting_dict(
 		getdns_dict_destroy(netreq_debug);
 		return NULL;
 	}
+	(void) getdns_dict_set_int(
+	     netreq_debug, "dane_verify_depth", netreq->upstream->dane_verify_depth);
+	(void) getdns_dict_util_set_string(
+	     netreq_debug, "dane_verify_status",
+	     netreq->upstream->dane_verify_depth  < 0 ? "None"
+	   : netreq->upstream->dane_verify_depth == 0 ? "EE authenticated successfully"
+	                                              : "TA authenticated successfully");
+
 	netreq->debug_tls_peer_cert.size = 0;
 	OPENSSL_free(netreq->debug_tls_peer_cert.data);
 	netreq->debug_tls_peer_cert.data = NULL;
