@@ -270,6 +270,10 @@ typedef struct getdns_upstream {
 	uint8_t          tsig_key[256];
 	getdns_tsig_algo tsig_alg;
 
+	getdns_network_req *addr_req;
+	getdns_network_req *tlsa_req;
+	_getdns_rrset_spc   tlsa_rrset_spc;
+	_getdns_rrset      *tlsa_rrset;
 } getdns_upstream;
 
 typedef struct getdns_log_config {

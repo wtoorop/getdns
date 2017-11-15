@@ -2260,8 +2260,12 @@ static void upstream_name_cb(getdns_dns_req *dnsreq)
 {
 	getdns_upstream *upstream = (getdns_upstream *)dnsreq->user_pointer;
 	uint64_t now_ms = 0;
-	getdns_network_req *addr_notify;		
+	getdns_network_req *addr_notify;
 
+	if (! _getdns_netreq_finished(upstream->tlsa_req)) {
+		DEBUG_STUB("TLSA lookup not finished yet....\n");
+		return;
+	}
 	DEBUG_STUB("YAY: %d, %d\n", (int)dnsreq->netreqs[0]->response_len
 	                          , (int)dnsreq->netreqs[1]->response_len);
 	DEBUG_STUB("upstream: %p, upstream->addr_notify: %p\n",
@@ -2305,6 +2309,21 @@ static void upstream_name_cb(getdns_dns_req *dnsreq)
 		_getdns_submit_stub_request(addr_notify, &now_ms);
 		addr_notify = addr_notify->addr_notify;
 	}
+}
+
+static void upstream_name_tlsa_cb(getdns_dns_req *dnsreq)
+{
+	getdns_upstream *upstream = (getdns_upstream *)dnsreq->user_pointer;
+
+	DEBUG_STUB("TLSA lookup finished!\n");
+
+	upstream->tlsa_rrset = _getdns_rrset_answer(
+	    &upstream->tlsa_rrset_spc, upstream->tlsa_req->response
+	                             , upstream->tlsa_req->response_len);
+	if (upstream->addr_req &&
+	    _getdns_netreq_finished(upstream->addr_req->owner->netreqs[0]) &&
+	    _getdns_netreq_finished(upstream->addr_req->owner->netreqs[1]))
+		upstream_name_cb(upstream->addr_req->owner);
 }
 
 getdns_return_t
@@ -2353,9 +2372,19 @@ _getdns_submit_stub_request(getdns_network_req *netreq, uint64_t *now_ms)
 			return GETDNS_RETURN_MEMORY_ERROR;
 
 		DEBUG_STUB("Scheduling address lookup for: %s\n", netreq->upstream->addr_str);
+		netreq->upstream->addr_req = NULL;
+		netreq->upstream->tlsa_req = NULL;
+		netreq->upstream->tlsa_rrset = NULL;
+
+		(void) _getdns_general_loop(sys_ctxt, dnsreq->loop,
+		    netreq->upstream->addr_str, GETDNS_RRTYPE_TLSA,
+		    dnssec_ok_checking_disabled_roadblock_avoidance,
+		    netreq->upstream, &netreq->upstream->tlsa_req,
+		    NULL, upstream_name_tlsa_cb);
+
 		if ((r =_getdns_address_loop(sys_ctxt, dnsreq->loop,
 		    netreq->upstream->addr_str, NULL, netreq->upstream,
-		    NULL, NULL, upstream_name_cb)))
+		    &netreq->upstream->addr_req, NULL, upstream_name_cb)))
 			return r;
 		else
 			return GETDNS_RETURN_GOOD;
