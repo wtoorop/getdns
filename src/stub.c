@@ -1750,13 +1750,19 @@ upstream_write_cb(void *userarg)
 			    cert, &netreq->debug_tls_peer_cert.data);
 			X509_free(cert);
 		}
-		if (netreq->owner->return_call_reporting &&
-		    netreq->upstream->tls_obj &&
+		if (netreq->upstream->tls_obj &&
 		    netreq->upstream->tlsa_rrset) {
 			netreq->upstream->dane_verify_depth =
 			    SSL_get0_dane_authority(
 			    netreq->upstream->tls_obj,
 			    NULL, NULL);
+			_getdns_upstream_log(upstream, GETDNS_LOG_UPSTREAM_STATS, GETDNS_LOG_DEBUG,
+			    "%-40s : DANE status   : %s - depth = %d, match: %s\n",
+			    netreq->upstream->addr_str,
+			    (netreq->upstream->dane_verify_depth >= 0 ? "Success" : "*failure*"),
+			    netreq->upstream->dane_verify_depth,
+			    ( netreq->upstream->dane_verify_depth < 0 ? "-" 
+			    : netreq->upstream->dane_verify_depth > 0 ? "TA" : "EE"));
 		}
 
 		/* Need this because auth status is reset on connection close */
