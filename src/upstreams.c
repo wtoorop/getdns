@@ -932,11 +932,13 @@ tcp_connect(_stateful_upstream *self)
 	    _getdns_socketerror() == _getdns_EWOULDBLOCK)
 		return fd;
 #endif
+#if defined(STUB_DEBUG) && STUB_DEBUG
 	char buffer[INET6_ADDRSTRLEN] = "";
 	int gni_r = getnameinfo(addr,addr_len,buffer,sizeof(buffer),
 		    0,0,NI_NUMERICHOST);
 	DEBUG_STUB("CONNECT FD %d to %s, port: %d, gni_r: %d\n", fd, buffer,
 			(int)ntohs(((struct sockaddr_in *)addr)->sin_port), gni_r);
+#endif
 
 	if (connect(fd, addr, addr_len) == -1) {
 		DEBUG_STUB("Connect returned: %s\n", _getdns_strerror(errno));
@@ -1545,6 +1547,7 @@ on_data_chunk_recv_callback(nghttp2_session *session, uint8_t flags,
 	getdns_network_req *netreq;
 	intptr_t stream_id_intptr = (intptr_t)stream_id;
 	(void)session;
+	(void)flags;
 
 	assert(data);
 	assert(self);
@@ -2021,6 +2024,8 @@ post_data_read_callback (nghttp2_session *session, int32_t stream_id,
 	_doh_upstream *self = (_doh_upstream *)user_data;
 	(void)self;
 	(void)session;
+	(void)stream_id;
+	(void)length;
 
 	DEBUG_STUB("POST(stream_id: %d, buf: %p, length: %zu, *flags: %u, data to send: %ld)\n"
 	          , stream_id, buf, length, *data_flags, (netreq->response - netreq->query));
