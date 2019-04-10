@@ -1164,7 +1164,7 @@ tls_do_handshake(_tls_upstream *upstream, uint64_t *now_ms)
 		default:
 			DEBUG_STUB("%s %-35s: FD:  %d Handshake failed %d (%s) (%s)\n", 
 				    STUB_DEBUG_SETUP_TLS, __FUNC__,
-				    upstream->super.fd, want,
+				    upstream->super.fd, r,
 			            ERR_error_string(ERR_get_error(), NULL),
 				    _getdns_strerror(errno)
 				    );
@@ -1501,7 +1501,7 @@ send_callback(nghttp2_session *session, const uint8_t *data, size_t length,
 	DEBUG_STUB("%s %-35s: FD: %d to write: %zu\n", STUB_DEBUG_WRITE, __FUNC__, self->fd, length);
 	res = _getdns_tls_connection_write(conn, data, length, &written);
 	if (res == GETDNS_RETURN_GOOD) {
-		DEBUG_STUB("%s %-35s: FD: %d written: %d\n", STUB_DEBUG_WRITE, __FUNC__, self->fd, written);
+		DEBUG_STUB("%s %-35s: FD: %d written: %zu\n", STUB_DEBUG_WRITE, __FUNC__, self->fd, written);
 		return (ssize_t)written;
 	}
 	return _doh_reschedule_on_SSL_error(self, conn, res);
@@ -1531,7 +1531,7 @@ recv_callback(nghttp2_session *session, uint8_t *buf, size_t length,
 	DEBUG_STUB("%s %-35s: FD: %d to read: %zu\n", STUB_DEBUG_READ, __FUNC__, self->fd, length);
 	res = _getdns_tls_connection_read(conn, buf, length, &read);
 	if (res == GETDNS_RETURN_GOOD) {
-		DEBUG_STUB("%s %-35s: FD: %d read: %d\n", STUB_DEBUG_READ, __FUNC__, self->fd, read);
+		DEBUG_STUB("%s %-35s: FD: %d read: %zu\n", STUB_DEBUG_READ, __FUNC__, self->fd, read);
 		return (ssize_t)read;
 	}
 	return _doh_reschedule_on_SSL_error(self, conn, res);

@@ -80,7 +80,7 @@ DEFAULT_EVENTLOOP_OBJ=@DEFAULT_EVENTLOOP@.lo
 
 GETDNS_OBJ=const-info.lo convert.lo dict.lo dnssec.lo general.lo \
 	list.lo request-internal.lo platform.lo rr-dict.lo \
-	rr-iter.lo server.lo stub.lo sync.lo ub_loop.lo \
+	rr-iter.lo server.lo sync.lo ub_loop.lo \
 	upstreams.lo util-internal.lo \
 	mdns.lo pubkey-pinning.lo
 

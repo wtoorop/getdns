@@ -245,7 +245,7 @@ typedef struct _getdns_upstreams {
 	 * upstream */
 	_getdns_upstream   *current[CAP_TRANS + 1];
 
-	/* Upstreams on a waiting queue, waiting for an upstream to finish
+	/* netreqs on a waiting queue, waiting for an upstream to finish
 	 * priming and pick it up */
 	getdns_netreq_fifo  waiting[CAP_TRANS + 1];
 

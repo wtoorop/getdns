@@ -173,14 +173,6 @@ _getdns_strdup2(const struct mem_funcs *mfs, const getdns_bindata *s)
     }
 }
 
-static uint8_t*
-upstream_addr(getdns_upstream *upstream)
-{
-	return upstream->addr.ss_family == AF_INET
-	    ? (void *)&((struct sockaddr_in*)&upstream->addr)->sin_addr
-	    : (void *)&((struct sockaddr_in6*)&upstream->addr)->sin6_addr;
-}
-
 static in_port_t
 upstream_port(getdns_upstream *upstream)
 {
